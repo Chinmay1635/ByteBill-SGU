@@ -6,7 +6,7 @@ import {
   Globe,
   Zap,
 } from "lucide-react";
-
+import { SiGmail } from "react-icons/si";
 // Stats Data
 export const statsData = [
   {
@@ -47,14 +47,14 @@ export const featuresData = [
     description: "Create and manage budgets with intelligent recommendations",
   },
   {
-    icon: <CreditCard className="h-8 w-8 text-blue-600" />,
-    title: "Multi-Account Support",
-    description: "Manage multiple accounts and credit cards in one place",
+    icon: <SiGmail className="h-8 w-8 text-blue-600" />,
+    title: "Fetches Transactions From Gmail",
+    description: "Automatically fetches transactions from your Gmail account",
   },
   {
     icon: <Globe className="h-8 w-8 text-blue-600" />,
-    title: "Multi-Currency",
-    description: "Support for multiple currencies with real-time conversion",
+    title: "Expense Prediction",
+    description: "Predicts future expenses based on historical transactions",
   },
   {
     icon: <Zap className="h-8 w-8 text-blue-600" />,
