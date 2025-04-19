@@ -7,7 +7,10 @@ import { PrismaClient } from '@prisma/client';
 import path from 'path';
 
 const prisma = new PrismaClient();
-const credential = require('../../../service-account.json');
+const credential = JSON.parse(
+  Buffer.from(process.env.GOOGLE_CREDENTIALS_B64, 'base64').toString()
+);
+console.log('🔑 [upload] Google credentials:', credential);
 const bigquery = new BigQuery({
   projectId: 'hopes-455920',
   credentials: credential,
