@@ -81,7 +81,9 @@ async function predictPerCategoryPerUser(prismaUserId) {
       CREATE OR REPLACE MODEL \`${datasetId}.category_predictor\`
       OPTIONS (
         model_type = 'BOOSTED_TREE_REGRESSOR',
-        input_label_cols = ['monthly_expense']
+        input_label_cols = ['monthly_expense'],
+        num_iterations = 15,
+        max_tree_depth = 3
       ) AS
       SELECT userId, category, month_index, monthly_expense
       FROM \`${datasetId}.user_monthly_category_expenses\`;
