@@ -10,19 +10,18 @@ const prisma = new PrismaClient();
 const credential = JSON.parse(
   Buffer.from(process.env.GOOGLE_CREDENTIALS_B64, 'base64').toString()
 );
-console.log('🔑 [upload] Google credentials:', credential);
+
 const bigquery = new BigQuery({
   projectId: 'hopes-455920',
   credentials: credential,
 });
 
 const datasetId = 'expense_data';
-const tableId   = 'expenses';
+const tableId = 'expenses';
 
 async function uploadToBigQuery(prismaUserId) {
   console.log('🔄 [upload] Start for Prisma user.id:', prismaUserId);
 
-  // 1️⃣ Find last date in BigQuery
   const [maxRows] = await bigquery.query({
     query: `
       SELECT MAX(date) AS lastDate
@@ -32,34 +31,29 @@ async function uploadToBigQuery(prismaUserId) {
     params: { userId: prismaUserId },
     location: 'US',
   });
+
   const lastDate = maxRows[0]?.lastDate;
   console.log('🔍 [upload] lastDate in BigQuery:', lastDate);
 
-  // 2️⃣ Fetch only newer Prisma transactions
-  const filter = {
-    userId: prismaUserId,
-    // ...(lastDate && { date: { gt: new Date(lastDate) } }),
-  };
-  
+  const filter = { userId: prismaUserId };
   if (lastDate && !isNaN(new Date(lastDate))) {
     filter.date = { gt: new Date(lastDate) };
   }
+
   const expenses = await prisma.transaction.findMany({ where: filter });
   console.log(`📦 [upload] Found ${expenses.length} new transactions`);
 
   if (!expenses.length) return;
 
-  // 3️⃣ Prepare BigQuery rows
   const rows = expenses.map(e => ({
-    type:        e.type.toString(),
-    amount:      parseFloat(e.amount),
-    category:    e.category,
-    date:        e.date.toISOString().split('T')[0],
+    type: e.type.toString(),
+    amount: parseFloat(e.amount),
+    category: e.category,
+    date: e.date.toISOString().split('T')[0],
     description: e.description || '',
-    userId:      e.userId,
+    userId: e.userId,
   }));
 
-  // 4️⃣ Insert into BigQuery
   try {
     await bigquery.dataset(datasetId).table(tableId).insert(rows);
     console.log(`✅ [upload] Inserted ${rows.length} rows`);
@@ -75,8 +69,8 @@ async function predictPerCategoryPerUser(prismaUserId) {
     SELECT
       userId,
       category,
-      EXTRACT(YEAR FROM DATE(date))*12 + EXTRACT(MONTH FROM DATE(date)) AS month_index,
-      SUM(CASE WHEN type='EXPENSE' THEN amount ELSE 0 END) AS monthly_expense
+      EXTRACT(YEAR FROM DATE(date)) * 12 + EXTRACT(MONTH FROM DATE(date)) AS month_index,
+      SUM(CASE WHEN type = 'EXPENSE' THEN amount ELSE 0 END) AS monthly_expense
     FROM \`${datasetId}.${tableId}\`
     GROUP BY userId, category, month_index;
   `);
@@ -85,9 +79,9 @@ async function predictPerCategoryPerUser(prismaUserId) {
   try {
     await bigquery.query(`
       CREATE OR REPLACE MODEL \`${datasetId}.category_predictor\`
-      OPTIONS(
-        model_type='linear_reg',
-        input_label_cols=['monthly_expense']
+      OPTIONS (
+        model_type = 'BOOSTED_TREE_REGRESSOR',
+        input_label_cols = ['monthly_expense']
       ) AS
       SELECT userId, category, month_index, monthly_expense
       FROM \`${datasetId}.user_monthly_category_expenses\`;
@@ -105,65 +99,85 @@ async function predictPerCategoryPerUser(prismaUserId) {
     }
   }
 
-  // dynamically compute next month index
   const now = new Date();
-  const nextMonthIndex = now.getFullYear() * 12 + (now.getMonth() + 2);
-  console.log('🔮 [predict] Predicting for month_index =', nextMonthIndex);
+  const currentMonthIndex = now.getFullYear() * 12 + (now.getMonth() + 1);
+  const monthIndexes = Array.from({ length: 6 }, (_, i) => currentMonthIndex - 4 + i);
+
+  console.log('🔮 [predict] Predicting for month_indexes =', monthIndexes);
 
   const [job] = await bigquery.createQueryJob({
     query: `
       SELECT
         category,
+        month_index,
         predicted_monthly_expense
       FROM ML.PREDICT(MODEL \`${datasetId}.category_predictor\`,
         (
-          SELECT userId, category, @monthIndex AS month_index
+          SELECT userId, category, month_index
           FROM \`${datasetId}.user_monthly_category_expenses\`
-          WHERE userId = @userId
+          WHERE userId = @userId AND month_index IN UNNEST(@monthIndexes)
         )
-      );
+      )
+      WHERE predicted_monthly_expense > 0
+      ORDER BY category, month_index;
     `,
-    params: { userId: prismaUserId, monthIndex: nextMonthIndex },
+    params: {
+      userId: prismaUserId,
+      monthIndexes,
+    },
     location: 'US',
   });
 
   const [predictions] = await job.getQueryResults();
   console.log('📊 [predict] Predictions:', predictions);
-  return predictions;
+
+  return predictions.map(p => ({
+    ...p,
+    predicted_monthly_expense: p.predicted_monthly_expense,
+  }));
 }
 
 export async function GET() {
-  // 0. Authenticate with Clerk
   const { userId: clerkUserId } = await auth();
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-//   const user = await db.user.findUnique({
-//       where: { clerkUserId: clerkUserId },
-//     });
 
-  // 1. Map Clerk userId to Prisma users.id
   const user = await prisma.user.findUnique({
     where: { clerkUserId },
-    // select: { id: true },
   });
+
   if (!user) {
     return NextResponse.json(
       { error: 'User not found in database' },
       { status: 404 }
     );
   }
+
   const prismaUserId = user.id;
   console.log('✅ Mapped Clerk ID → Prisma ID:', prismaUserId);
 
   try {
-    // 2. Sync new transactions
     await uploadToBigQuery(prismaUserId);
-
-    // 3. Generate predictions
     const predictions = await predictPerCategoryPerUser(prismaUserId);
 
-    return NextResponse.json({ predictions });
+    const rawTransactions = await prisma.transaction.findMany({
+      where: { userId: prismaUserId, type: 'EXPENSE' },
+      select: {
+        createdAt: true,
+        amount: true,
+      },
+    });
+
+    const transactions = rawTransactions.map(tx => ({
+      date: tx.createdAt.toISOString(),
+      amount: tx.amount,
+    }));
+
+    return NextResponse.json(
+      { predictions, transactions },
+      { status: 200 }
+    );
   } catch (err) {
     console.error('❌ [route] Unexpected error:', err);
     return NextResponse.json(
