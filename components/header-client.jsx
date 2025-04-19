@@ -156,6 +156,15 @@ export const HeaderClient = () => {
                   <span>Predict Expenses</span>
                 </Link>
                 <Link
+                  href="/gmail"
+                  className="flex items-center gap-2 text-gray-600 hover:text-blue-600 py-2"
+                  onClick={() => setIsOpen(false)}
+                >
+                  <FaEnvelope size={18} />
+                  <span>Gmail Transactions</span>
+                </Link>
+                
+                <Link
                   href="/dashboard"
                   className="flex items-center gap-2 text-gray-600 hover:text-blue-600 py-2"
                   onClick={() => setIsOpen(false)}
