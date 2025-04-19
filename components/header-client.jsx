@@ -6,7 +6,7 @@ import { PenBox, LayoutDashboard, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
 import Image from "next/image";
-import { FaChartLine } from "react-icons/fa";
+import { FaChartLine,FaEnvelope } from "react-icons/fa";
 
 export const HeaderClient = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -82,6 +82,15 @@ export const HeaderClient = () => {
               <Button variant="outline">
                 <FaChartLine size={18} />
                 <span className="hidden md:inline">Predict Expenses</span>
+              </Button>
+            </Link>
+            <Link
+              href="/gmail"
+              className="text-gray-600 hover:text-blue-600 flex items-center gap-2"
+            >
+              <Button variant="outline">
+              <FaEnvelope size={18} /> {/* Add the mail icon here */}
+                <span className="hidden md:inline">Gmail Transactions</span>
               </Button>
             </Link>
             <Link
