@@ -24,7 +24,6 @@ ChartJS.register(
   Filler
 );
 
-// Converts month_index to "YYYY-MM"
 function decodeMonthIndex(monthIndex) {
   let year = Math.floor(monthIndex / 12);
   let month = monthIndex % 12;
@@ -60,9 +59,7 @@ export default function PredictionPage() {
         if (!res.ok) throw new Error(data.error || 'Prediction fetch failed');
 
         setPredictions(data.predictions || []);
-
-        const summary = {}; // Placeholder if you want to re-enable actual data
-        setMonthlySummary(summary);
+        setMonthlySummary({});
         setStatus('ready');
       } catch (err) {
         console.error('API error:', err);
@@ -75,7 +72,6 @@ export default function PredictionPage() {
   if (status === 'loading') return <p className="p-4">⏳ Loading predictions…</p>;
   if (status === 'error') return <p className="p-4 text-red-600">{error}</p>;
 
-  // Collect all months from predictions
   const allMonths = new Set();
   predictions.forEach(pred => {
     const predMonth = decodeMonthIndex(pred.month_index);
@@ -116,13 +112,17 @@ export default function PredictionPage() {
 
   const chartData = {
     labels: months,
-    datasets: [...predictedExpenseDatasets], // Add actualExpenseDatasets here if needed
+    datasets: predictedExpenseDatasets,
   };
 
   const chartOptions = {
     responsive: true,
+    maintainAspectRatio: false,
     plugins: {
-      legend: { position: 'top' },
+      legend: {
+        display: typeof window !== 'undefined' ? window.innerWidth >= 640 : true, // 640px = Tailwind's `sm`
+        position: 'top',
+      },
       tooltip: { mode: 'index', intersect: false },
     },
     interaction: { mode: 'nearest', axis: 'x', intersect: false },
@@ -138,18 +138,28 @@ export default function PredictionPage() {
       },
     },
   };
+  
 
   return (
-    <div className="max-w-4xl mx-auto p-6 mt-20">
-      <h1 className="text-3xl font-bold mb-6 text-center">📊 Monthly Expense Overview</h1>
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 mt-16">
+      <h1 className="text-2xl sm:text-3xl font-bold mb-4 text-center">
+        📊 Monthly Expense Overview
+      </h1>
 
-      <div className="bg-white p-4 rounded shadow mb-10">
-        <Line data={chartData} options={chartOptions} />
+      <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md mb-10 overflow-x-auto">
+        <div className="w-full" style={{ minHeight: '300px', height: 'auto' }}>
+          <div className="relative" style={{ minHeight: '300px', height: '50vh' }}>
+            <Line data={chartData} options={chartOptions} />
+          </div>
+        </div>
       </div>
 
-      <h2 className="text-2xl font-semibold mb-4">🔮 Predicted Expenses (Last 5 Months)</h2>
+      <h2 className="text-xl sm:text-2xl font-semibold mb-4">
+        🔮 Predicted Expenses (Last 5 Months)
+      </h2>
+
       {predictions.length === 0 ? (
-        <p>No predicted expenses available.</p>
+        <p className="text-gray-600">No predicted expenses available.</p>
       ) : (
         Object.entries(
           predictions.reduce((acc, curr) => {
@@ -162,15 +172,15 @@ export default function PredictionPage() {
           .sort(([a], [b]) => new Date(a) - new Date(b))
           .map(([label, items]) => (
             <div key={label} className="mb-6">
-              <h3 className="text-lg font-medium mb-2">{label}</h3>
+              <h3 className="text-base sm:text-lg font-medium mb-2">{label}</h3>
               <ul className="space-y-2">
                 {items.map(({ category, predicted_monthly_expense }, i) => (
                   <li
                     key={i}
-                    className="flex justify-between p-3 border rounded shadow-sm"
+                    className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 p-3 border rounded-md shadow-sm"
                   >
-                    <span className="font-medium">{category}</span>
-                    <span>₹{predicted_monthly_expense.toFixed(2)}</span>
+                    <span className="font-medium text-sm sm:text-base">{category}</span>
+                    <span className="text-sm sm:text-base">₹{predicted_monthly_expense.toFixed(2)}</span>
                   </li>
                 ))}
               </ul>
